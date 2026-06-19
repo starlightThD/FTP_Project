@@ -1,8 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -18,24 +19,16 @@ public partial class MainWindow : Window
 {
     private FtpConfig? _config;
     private readonly ObservableCollection<string> _remoteFiles = new();
-    private readonly ObservableCollection<string> _logs = new();
-    private CancellationTokenSource? _transferCts;
+    private readonly ObservableCollection<TransferTask> _tasks = new();
 
     public MainWindow()
     {
         InitializeComponent();
         RemoteFileList.ItemsSource = _remoteFiles;
-        LogList.ItemsSource = _logs;
+        TransferList.ItemsSource = _tasks;
     }
 
-    private void Log(string msg)
-    {
-        Dispatcher.Invoke(() =>
-        {
-            _logs.Insert(0, $"[{DateTime.Now:HH:mm:ss}] {msg}");
-        });
-    }
-
+    // ===== 连接 =====
     private async void ConnectButton_Click(object sender, RoutedEventArgs e)
     {
         ConnectButton.IsEnabled = false;
@@ -49,66 +42,51 @@ public partial class MainWindow : Window
                 Password = PasswordInput.Password
             };
 
-            Log("正在连接...");
-
+            StatusText.Text = "正在连接...";
             var ftp = new RealFtpClient();
             await Task.Run(() => ftp.ConnectAsync(_config));
-            
-            Log($"已连接 {_config.Host}");
-            
-            Dispatcher.Invoke(() =>
-            {
-                DisconnectButton.IsEnabled = true;
-                RefreshButton.IsEnabled = true;
-                UploadButton.IsEnabled = true;
-                DownloadButton.IsEnabled = true;
-            });
-            
+
+            DisconnectButton.IsEnabled = true;
+            RefreshButton.IsEnabled = true;
+            UploadButton.IsEnabled = true;
+            DownloadButton.IsEnabled = true;
+            StatusText.Text = "已连接 " + _config.Host;
+
             await RefreshFiles();
         }
         catch (Exception ex)
         {
-            Log($"连接失败: {ex.InnerException?.Message ?? ex.Message}");
+            StatusText.Text = "连接失败: " + (ex.InnerException?.Message ?? ex.Message);
             ConnectButton.IsEnabled = true;
         }
     }
 
     private void DisconnectButton_Click(object sender, RoutedEventArgs e)
     {
-        Task.Run(async () =>
-        {
-            var ftp = new RealFtpClient();
-            await ftp.DisconnectAsync();
-        });
-        
-        Log("已断开");
+        Task.Run(async () => { var f = new RealFtpClient(); await f.DisconnectAsync(); });
         ConnectButton.IsEnabled = true;
         DisconnectButton.IsEnabled = false;
         RefreshButton.IsEnabled = false;
         UploadButton.IsEnabled = false;
         DownloadButton.IsEnabled = false;
         _remoteFiles.Clear();
+        StatusText.Text = "已断开";
     }
 
+    // ===== 文件浏览 =====
     private async Task RefreshFiles()
     {
         if (_config == null) return;
-        
         try
         {
-            Log("读取目录...");
-            
             var path = CurrentPath.Text;
-            
             var ftp = new RealFtpClient();
-            IReadOnlyList<string> files = Array.Empty<string>();
-            
-            await Task.Run(async () =>
+            var files = await Task.Run(async () =>
             {
                 await ftp.ConnectAsync(_config);
-                files = await ftp.ListDirectoryAsync(path);
+                return await ftp.ListDirectoryAsync(path);
             });
-            
+
             await Dispatcher.InvokeAsync(() =>
             {
                 _remoteFiles.Clear();
@@ -119,17 +97,15 @@ public partial class MainWindow : Window
                     _remoteFiles.Add((f.StartsWith('d') ? "[DIR] " : "      ") + name);
                 }
             });
-            
-            Log($"列出 {files.Count} 个文件");
+            StatusText.Text = $"{files.Count} 个项目";
         }
         catch (Exception ex)
         {
-            Log($"刷新失败: {ex.Message}");
+            StatusText.Text = "刷新失败: " + ex.Message;
         }
     }
 
-    private async void RefreshButton_Click(object sender, RoutedEventArgs e) 
-        => await RefreshFiles();
+    private async void RefreshButton_Click(object sender, RoutedEventArgs e) => await RefreshFiles();
 
     private async void RemoteFileList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
@@ -140,111 +116,139 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void UploadButton_Click(object sender, RoutedEventArgs e)
+    // ===== 上传 =====
+    private void UploadButton_Click(object sender, RoutedEventArgs e)
     {
         if (_config == null) return;
-
         var dialog = new OpenFileDialog();
         if (dialog.ShowDialog() != true) return;
 
-        _transferCts = new CancellationTokenSource();
-        UploadButton.IsEnabled = false;
-        var token = _transferCts.Token;
-        
-        try
+        var task = new TransferTask
         {
-            var localPath = dialog.FileName;
-            var remotePath = CurrentPath.Text.TrimEnd('/')  + Path.GetFileName(localPath);
-            
-            Log($"上传: {Path.GetFileName(localPath)}");
-            
-            await Task.Run(async () =>
-            {
-                var ftp = new RealFtpClient();
-                await ftp.ConnectAsync(_config, token);
-                await ftp.UploadFileAsync(localPath, remotePath, null, token);
-            }, token);
-            
-            Log($"上传完成: {Path.GetFileName(localPath)}");
-            await RefreshFiles();
-        }
-        catch (OperationCanceledException)
-        {
-            Log("上传已取消");
-        }
-        catch (Exception ex)
-        {
-            Log($"上传失败: {ex.InnerException?.Message ?? ex.Message}");
-        }
-        finally
-        {
-            UploadButton.IsEnabled = true;
-        }
+            Id = Guid.NewGuid().ToString(),
+            FileName = Path.GetFileName(dialog.FileName),
+            LocalPath = dialog.FileName,
+            RemotePath = CurrentPath.Text.TrimEnd('/') + Path.GetFileName(dialog.FileName),
+            Direction = "upload",
+            DirectionIcon = "⬆"
+        };
+        _tasks.Insert(0, task);
+        _ = RunTransfer(task);
     }
 
-    private async void DownloadButton_Click(object sender, RoutedEventArgs e)
+    // ===== 下载 =====
+    private void DownloadButton_Click(object sender, RoutedEventArgs e)
     {
         if (_config == null) return;
-
         if (RemoteFileList.SelectedItem is not string item || item.StartsWith("[DIR]"))
         {
             MessageBox.Show("请选择文件");
             return;
         }
 
-        // 关键修复：去掉前导空格和 DIR 标记
         var remoteFileName = item.Trim();
-        
-        var dialog = new SaveFileDialog
-        {
-            FileName = remoteFileName,
-            Title = "保存文件"
-        };
-        
+        var dialog = new SaveFileDialog { FileName = remoteFileName };
         if (dialog.ShowDialog() != true) return;
-        
-        var localPath = dialog.FileName;
-        try { File.Delete(localPath + ".part"); } catch { }
-        
-        _transferCts = new CancellationTokenSource();
-        DownloadButton.IsEnabled = false;
-        var token = _transferCts.Token;
-        
+
+        try { File.Delete(dialog.FileName + ".part"); } catch { }
+
+        var task = new TransferTask
+        {
+            Id = Guid.NewGuid().ToString(),
+            FileName = remoteFileName,
+            LocalPath = dialog.FileName,
+            RemotePath = CurrentPath.Text.TrimEnd('/') + remoteFileName,
+            Direction = "download",
+            DirectionIcon = "⬇"
+        };
+        _tasks.Insert(0, task);
+        _ = RunTransfer(task);
+    }
+
+    // ===== 传输核心 =====
+    private async Task RunTransfer(TransferTask task)
+    {
+        var cts = new CancellationTokenSource();
+        task.Cts = cts;
+        var isUpload = task.Direction == "upload";
+
         try
         {
-            var currentPath = CurrentPath.Text.TrimEnd('/');
-            var remotePath = currentPath +  remoteFileName;
-            
-            Log("下载: " + remoteFileName);
-            Log("远程: " + remotePath);
-            
+            task.StatusText = "连接中...";
+            task.ProgressPercent = 0;
+
             await Task.Run(async () =>
             {
                 var ftp = new RealFtpClient();
-                await ftp.ConnectAsync(_config, token);
-                await ftp.DownloadFileAsync(remotePath, localPath, null, token);
-            }, token);
-            
-            if (File.Exists(localPath))
-            {
-                var size = new FileInfo(localPath).Length;
-                Log("下载完成: " + FormatSize(size));
-            }
-            else
-            {
-                Log("下载失败: 文件未创建");
-            }
+                await ftp.ConnectAsync(_config!, cts.Token);
+
+                var progress = new Progress<TransferProgress>(p =>
+                {
+                    var percent = p.TotalBytes > 0
+                        ? (double)p.BytesTransferred / p.TotalBytes.Value * 100
+                        : 0;
+                    Dispatcher.Invoke(() =>
+                    {
+                        task.ProgressPercent = percent;
+                        task.StatusText = p.TotalBytes > 0
+                            ? $"{FormatSize(p.BytesTransferred)} / {FormatSize(p.TotalBytes.Value)}"
+                            : FormatSize(p.BytesTransferred);
+                    });
+                });
+
+                if (isUpload)
+                    await ftp.UploadFileAsync(task.LocalPath, task.RemotePath, progress, cts.Token);
+                else
+                    await ftp.DownloadFileAsync(task.RemotePath, task.LocalPath, progress, cts.Token);
+            }, cts.Token);
+
+            task.StatusText = "✅ 完成";
+            task.ProgressPercent = 100;
+            StatusText.Text = (isUpload ? "上传" : "下载") + "完成: " + task.FileName;
+            await RefreshFiles();
+        }
+        catch (OperationCanceledException)
+        {
+            task.StatusText = "⏸ 已暂停";
         }
         catch (Exception ex)
         {
-            Log("下载失败: " + (ex.InnerException?.Message ?? ex.Message));
-        }
-        finally
-        {
-            DownloadButton.IsEnabled = true;
+            task.StatusText = "❌ " + (ex.InnerException?.Message ?? ex.Message);
         }
     }
 
+    // ===== 任务控制 =====
+    private void PauseTransfer_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is string id)
+        {
+            var task = _tasks.FirstOrDefault(t => t.Id == id);
+            if (task == null) return;
+
+            if (task.StatusText == "⏸ 已暂停")
+            {
+                task.StatusText = "继续中...";
+                _ = RunTransfer(task);
+            }
+            else
+            {
+                task.Cts?.Cancel();
+            }
+        }
+    }
+
+    private void CancelTransfer_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is string id)
+        {
+            var task = _tasks.FirstOrDefault(t => t.Id == id);
+            if (task == null) return;
+            task.Cts?.Cancel();
+            _tasks.Remove(task);
+        }
+    }
+
+    // ===== 工具 =====
     private static string FormatSize(long bytes)
     {
         if (bytes < 1024) return bytes + " B";
@@ -254,4 +258,36 @@ public partial class MainWindow : Window
         while (len >= 1024 && order < sizes.Length - 1) { order++; len /= 1024; }
         return $"{len:0.##} {sizes[order]}";
     }
+}
+
+// ===== 任务模型 =====
+public class TransferTask : INotifyPropertyChanged
+{
+    private string _statusText = "";
+    private double _progressPercent;
+
+    public string Id { get; set; } = "";
+    public string FileName { get; set; } = "";
+    public string LocalPath { get; set; } = "";
+    public string RemotePath { get; set; } = "";
+    public string Direction { get; set; } = "";
+    public string DirectionIcon { get; set; } = "";
+
+    public string StatusText
+    {
+        get => _statusText;
+        set { _statusText = value; OnPropertyChanged(); }
+    }
+
+    public double ProgressPercent
+    {
+        get => _progressPercent;
+        set { _progressPercent = value; OnPropertyChanged(); }
+    }
+
+    public CancellationTokenSource? Cts { get; set; }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    protected void OnPropertyChanged([CallerMemberName] string? name = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
