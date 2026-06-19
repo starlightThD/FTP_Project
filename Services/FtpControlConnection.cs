@@ -38,7 +38,7 @@ public sealed class FtpControlConnection : IAsyncDisposable
             using (var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
                 cts.CancelAfter(TimeSpan.FromSeconds(10));
-                await _socket.ConnectAsync(host, port);
+                await _socket.ConnectAsync(new DnsEndPoint(host, port), cts.Token);
             }
 
             Console.WriteLine($"[调试] Socket 已连接，创建流...");
