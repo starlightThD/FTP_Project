@@ -12,9 +12,9 @@
 
         <!-- 连接面板 -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
-            <TextBox x:Name="HostInput" Width="150" Margin="0,0,5,0" Text="127.0.0.1"/>
+            <TextBox x:Name="HostInput" Width="150" Margin="0,0,5,0" Text="47.122.113.41"/>
             <TextBox x:Name="PortInput" Width="50" Margin="0,0,5,0" Text="21"/>
-            <TextBox x:Name="UsernameInput" Width="100" Margin="0,0,5,0"/>
+            <TextBox x:Name="UsernameInput" Width="100" Margin="0,0,5,0" Text="ftpuser"/>
             <PasswordBox x:Name="PasswordInput" Width="100" Margin="0,0,5,0"/>
             <Button x:Name="ConnectButton" Content="连接" Click="ConnectButton_Click" Margin="0,0,5,0"/>
             <Button x:Name="DisconnectButton" Content="断开" Click="DisconnectButton_Click" IsEnabled="False"/>
@@ -44,7 +44,8 @@
                     <ListBox x:Name="RemoteFileList" MouseDoubleClick="RemoteFileList_MouseDoubleClick" FontFamily="Consolas"/>
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,5,0,0">
                         <Button x:Name="UploadButton" Content="上传" Click="UploadButton_Click" IsEnabled="False" Margin="0,0,5,0"/>
-                        <Button x:Name="DownloadButton" Content="下载" Click="DownloadButton_Click" IsEnabled="False"/>
+                        <Button x:Name="DownloadButton" Content="下载" Click="DownloadButton_Click" IsEnabled="False" Margin="0,0,5,0"/>
+                        <Button x:Name="DeleteButton" Content="删除" Click="DeleteButton_Click" IsEnabled="False"/>
                     </StackPanel>
                 </Grid>
             </GroupBox>

@@ -72,4 +72,27 @@ public sealed class StubFtpService : IFtpService
 
         return Task.CompletedTask;
     }
+    //删除文件
+    public Task DeleteFileAsync(
+        string remotePath,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConnected)
+            throw new InvalidOperationException("Not connected");
+
+        // 桩实现：仅做连接检查，假装删除成功
+        return Task.CompletedTask;
+    }
+
+    // 删除目录
+    public Task DeleteDirectoryAsync(
+        string remotePath,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConnected)
+            throw new InvalidOperationException("Not connected");
+
+        // 桩实现：仅做连接检查，假装删除成功
+        return Task.CompletedTask;
+    }
 }

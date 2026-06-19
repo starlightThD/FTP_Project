@@ -450,6 +450,85 @@ public sealed class RealFtpClient : IFtpService
             });
         }
     }
+// 删除文件
+public async Task DeleteFileAsync(
+    string remotePath,
+    CancellationToken cancellationToken = default)
+{
+    if (!IsConnected)
+        throw new InvalidOperationException("Not connected");
+    if (_controlConnection == null)
+        throw new InvalidOperationException("Control connection is null");
+
+    try
+    {
+        await _controlConnection.SendCommandAsync($"DELE {remotePath}", cancellationToken);
+        var response = await _controlConnection.ReadResponseAsync(cancellationToken);
+        Console.WriteLine($"[DELE 响应 {response.Code}] {response.Message}");
+
+        if (response.Code != 250)
+            throw new FtpConnectionException($"DELE failed: {response.Message}");
+    }
+    catch (Exception ex) when (ex is not FtpConnectionException and not OperationCanceledException)
+    {
+        throw new FtpConnectionException($"Failed to delete file '{remotePath}': {ex.Message}", ex);
+    }
+}
+
+// 删除目录（递归）
+public async Task DeleteDirectoryAsync(
+    string remotePath,
+    CancellationToken cancellationToken = default)
+{
+    if (!IsConnected)
+        throw new InvalidOperationException("Not connected");
+    if (_controlConnection == null)
+        throw new InvalidOperationException("Control connection is null");
+
+    try
+    {
+        await DeleteDirectoryRecursiveAsync(remotePath, cancellationToken);
+    }
+    catch (Exception ex) when (ex is not FtpConnectionException and not OperationCanceledException)
+    {
+        throw new FtpConnectionException($"Failed to delete directory '{remotePath}': {ex.Message}", ex);
+    }
+}
+
+private async Task DeleteDirectoryRecursiveAsync(
+    string remotePath,
+    CancellationToken cancellationToken)
+{
+    var entries = await ListDirectoryAsync(remotePath, cancellationToken);
+
+    foreach (var entry in entries)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var isDirectory = entry.StartsWith('d');
+        var parts = entry.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Length == 0) continue;
+        var name = parts[^1];
+
+        if (name == "." || name == "..") continue;
+
+        var childPath = remotePath.TrimEnd('/') + "/" + name;
+
+        if (isDirectory)
+            await DeleteDirectoryRecursiveAsync(childPath, cancellationToken);
+        else
+            await DeleteFileAsync(childPath, cancellationToken);
+    }
+
+    // 目录已清空，删除目录本身
+    await _controlConnection!.SendCommandAsync($"RMD {remotePath}", cancellationToken);
+    var rmdResponse = await _controlConnection.ReadResponseAsync(cancellationToken);
+    Console.WriteLine($"[RMD 响应 {rmdResponse.Code}] {rmdResponse.Message}");
+
+    if (rmdResponse.Code != 250)
+        throw new FtpConnectionException($"RMD failed on '{remotePath}': {rmdResponse.Message}");
+}
 
     private static string GetPlaceholderPath(string localPath)
     {

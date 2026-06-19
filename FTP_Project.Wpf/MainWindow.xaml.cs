@@ -50,6 +50,7 @@ public partial class MainWindow : Window
             RefreshButton.IsEnabled = true;
             UploadButton.IsEnabled = true;
             DownloadButton.IsEnabled = true;
+            DeleteButton.IsEnabled = true;
             StatusText.Text = "已连接 " + _config.Host;
 
             await RefreshFiles();
@@ -69,6 +70,7 @@ public partial class MainWindow : Window
         RefreshButton.IsEnabled = false;
         UploadButton.IsEnabled = false;
         DownloadButton.IsEnabled = false;
+        DeleteButton.IsEnabled = false;
         _remoteFiles.Clear();
         StatusText.Text = "已断开";
     }
@@ -164,7 +166,70 @@ public partial class MainWindow : Window
         _tasks.Insert(0, task);
         _ = RunTransfer(task);
     }
+    private async void DeleteButton_Click(object sender, RoutedEventArgs e)
+{
+    if (_config == null) return;
 
+    if (RemoteFileList.SelectedItem is not string item)
+    {
+        MessageBox.Show("请选择要删除的文件或目录");
+        return;
+    }
+
+    var isDirectory = IsDirectoryItem(item);
+    var name = GetRemoteItemName(item);
+    var remotePath = CombineRemotePath(CurrentPath.Text, name);
+
+    MessageBox.Show($"即将删除:\n路径: {remotePath}\n类型: {(isDirectory ? "目录" : "文件")}\n原始项: [{item}]",
+        "调试信息");
+        
+    var result = MessageBox.Show(
+        isDirectory
+            ? $"确定删除目录“{name}”及其全部内容吗？"
+            : $"确定删除文件“{name}”吗？",
+        "确认删除",
+        MessageBoxButton.YesNo,
+        MessageBoxImage.Warning);
+
+    if (result != MessageBoxResult.Yes)
+        return;
+
+    DeleteButton.IsEnabled = false;
+
+    try
+    {
+        StatusText.Text = "正在删除...";
+
+        await Task.Run(async () =>
+        {
+            var ftp = new RealFtpClient();
+            try
+            {
+                await ftp.ConnectAsync(_config);
+
+                if (isDirectory)
+                    await ftp.DeleteDirectoryAsync(remotePath);
+                else
+                    await ftp.DeleteFileAsync(remotePath);
+            }
+            finally
+            {
+                await ftp.DisconnectAsync();
+            }
+        });
+
+        StatusText.Text = "删除成功: " + name;
+        await RefreshFiles();
+    }
+    catch (Exception ex)
+    {
+        StatusText.Text = "删除失败: " + (ex.InnerException?.Message ?? ex.Message);
+    }
+    finally
+    {
+        DeleteButton.IsEnabled = true;
+    }
+}
     // ===== 传输核心 =====
     private async Task RunTransfer(TransferTask task)
     {
@@ -247,7 +312,18 @@ public partial class MainWindow : Window
             _tasks.Remove(task);
         }
     }
+    private static bool IsDirectoryItem(string item) => item.StartsWith("[DIR] ");
 
+    private static string GetRemoteItemName(string item)
+        => IsDirectoryItem(item) ? item.Substring(6).Trim() : item.Trim();
+
+    private static string CombineRemotePath(string currentPath, string name)
+    {
+        if (string.IsNullOrWhiteSpace(currentPath) || currentPath == "/")
+            return "/" + name;
+
+        return currentPath.TrimEnd('/') + "/" + name;
+    }
     // ===== 工具 =====
     private static string FormatSize(long bytes)
     {
@@ -290,4 +366,7 @@ public class TransferTask : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     protected void OnPropertyChanged([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+        
 }
+

@@ -18,4 +18,6 @@ public interface IFtpService
         string localPath,
         IProgress<TransferProgress>? progress = null,
         CancellationToken cancellationToken = default);
+    Task DeleteFileAsync(string remotePath, CancellationToken cancellationToken = default);
+    Task DeleteDirectoryAsync(string remotePath, CancellationToken cancellationToken = default);
 }
