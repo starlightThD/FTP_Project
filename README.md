@@ -39,6 +39,13 @@ GUI 功能：
 - 暂停与继续（续传）
 - 多任务并发传输
 
+### 3) 可视化前端（WPF）
+
+```bash
+dotnet restore
+cd FTP_Project.Wpf & dotnet run
+```
+
 ## 缓存文件
 
 - `cache/command_history.txt`：CLI 历史命令（最多 25 条）
