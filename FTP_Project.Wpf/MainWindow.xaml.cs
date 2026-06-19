@@ -180,9 +180,7 @@ public partial class MainWindow : Window
     var name = GetRemoteItemName(item);
     var remotePath = CombineRemotePath(CurrentPath.Text, name);
 
-    MessageBox.Show($"即将删除:\n路径: {remotePath}\n类型: {(isDirectory ? "目录" : "文件")}\n原始项: [{item}]",
-        "调试信息");
-        
+
     var result = MessageBox.Show(
         isDirectory
             ? $"确定删除目录“{name}”及其全部内容吗？"
