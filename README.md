@@ -8,38 +8,8 @@
 
 ## 启动方式
 
-### 1) 命令行（CLI）
 
-```bash
-dotnet run --project FTP_Project.csproj
-```
-
-常用命令：
-- `connect <host> [port]`
-- `ls [path]`
-- `upload <local> [remote]`
-- `download <remote> [local]`
-- `disconnect`
-- `exit`
-
-输入增强：
-- `↑/↓` 历史命令
-- `Tab` 基础命令补全
-
-### 2) 可视化前端（GUI）
-
-```bash
-dotnet run --project FTP_Project.Gui/FTP_Project.Gui.csproj
-```
-
-GUI 功能：
-- 连接服务器与连接记录缓存（自动加载）
-- 远程目录刷新
-- 上传/下载任务列表
-- 暂停与继续（续传）
-- 多任务并发传输
-
-### 3) 可视化前端（WPF）
+### 可视化前端（WPF）
 
 ```bash
 dotnet restore
