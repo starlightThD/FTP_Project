@@ -166,7 +166,7 @@ public partial class MainWindow : Window
         _tasks.Insert(0, task);
         _ = RunTransfer(task);
     }
-    private async void DeleteButton_Click(object sender, RoutedEventArgs e)
+private async void DeleteButton_Click(object sender, RoutedEventArgs e)
 {
     if (_config == null) return;
 
@@ -178,19 +178,14 @@ public partial class MainWindow : Window
 
     var isDirectory = IsDirectoryItem(item);
     var name = GetRemoteItemName(item);
-    var remotePath = CombineRemotePath(CurrentPath.Text, name);
-
 
     var result = MessageBox.Show(
-        isDirectory
-            ? $"确定删除目录“{name}”及其全部内容吗？"
+        isDirectory 
+            ? $"确定删除目录“{name}”及其全部内容吗？" 
             : $"确定删除文件“{name}”吗？",
-        "确认删除",
-        MessageBoxButton.YesNo,
-        MessageBoxImage.Warning);
+        "确认删除", MessageBoxButton.YesNo, MessageBoxImage.Warning);
 
-    if (result != MessageBoxResult.Yes)
-        return;
+    if (result != MessageBoxResult.Yes) return;
 
     DeleteButton.IsEnabled = false;
 
@@ -206,9 +201,9 @@ public partial class MainWindow : Window
                 await ftp.ConnectAsync(_config);
 
                 if (isDirectory)
-                    await ftp.DeleteDirectoryAsync(remotePath);
+                    await ftp.DeleteDirectoryAsync(name);
                 else
-                    await ftp.DeleteFileAsync(remotePath);
+                    await ftp.DeleteFileAsync(name);
             }
             finally
             {
